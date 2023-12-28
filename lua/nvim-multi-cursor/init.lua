@@ -161,7 +161,8 @@ end
 
 function M.setup(opts)
 	vim.tbl_extend("force", M.config, opts)
-	vim.keymap.set("n", "<M-LeftMouse>", M.mouse_add, {})
+	vim.keymap.set("n", "<M-LeftMouse>", M.toggle_cursor_at_mouse, {})
+	vim.keymap.set("n", "mm", M.toggle_cursor_at_mouse, {})
 	vim.keymap.set("n", "mc", M.start, {})
 end
 
