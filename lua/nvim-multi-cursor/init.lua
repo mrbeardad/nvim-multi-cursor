@@ -120,6 +120,8 @@ function M.normal_change()
   M.iterating_virtual_cursors = true
   M.stop_record()
 
+  debug_multicursor_log = debug_multicursor_log or {}
+  debug_multicursor_log[#debug_multicursor_log + 1] = { vim.fn.getreg("m"), vim.fn.state() }
   local orig_pos = vim.fn.getcurpos()
   for _, cursor in ipairs(M.virtual_cursors) do
     vim.fn.cursor({ cursor.line, cursor.col, 0, cursor.curwant })
@@ -146,6 +148,7 @@ function M.start()
   M.cache_register()
   M.start_record()
   M.multi_cursor_mode = true
+  debug_multicursor_log = {}
 end
 
 function M.stop(k)
@@ -175,10 +178,13 @@ function M.setup(opts)
     if not M.multi_cursor_mode or M.iterating_virtual_cursors then
       return
     end
+    -- The keymap has been resolved and it is the last key
     if vim.fn.getchar(1) == 0 then
+      -- Schedule it in order to cycle the virtual cursors after the real cursor has done
       vim.schedule(function()
         local mode = vim.fn.mode()
-        if mode == "n" then
+        local state = vim.fn.state() -- nothings are pending
+        if mode == "n" and state == "" then
           M.normal_change()
         end
       end)
