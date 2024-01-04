@@ -272,6 +272,8 @@ end
 function M.setup(opts)
   vim.tbl_extend("force", M.config, opts)
 
+  vim.api.nvim_set_hl(0, "FlashLabelUnselected", { fg = "#b9bbc4", bg = "#bd0c69", italic = true, bold = true })
+
   vim.on_key(function(key)
     if not M.multi_cursor_mode or M.iterating_virtual_cursors then
       return
