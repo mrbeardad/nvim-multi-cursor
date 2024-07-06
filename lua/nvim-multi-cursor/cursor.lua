@@ -11,7 +11,7 @@ local M = {}
 ---@field id integer extmark id
 
 M.main_cursor = {} ---@type Cursor
-M.virtual_cursors = {} ---@type Array[Cursor]
+M.virtual_cursors = {} ---@type table[Cursor]
 M.adding_cursor = false
 M.ns_id = vim.api.nvim_create_namespace("MultipleCursors")
 
@@ -34,11 +34,16 @@ function M.set_extmark(line, col, id, hl)
   return vim.api.nvim_buf_set_extmark(0, M.ns_id, line - 1, col - 1, opts)
 end
 
+local function hash(a, b, c)
+  return bit.bxor(a * 73856093, b * 19349663, c * 83492791)
+end
+
 function M.toggle_cursor(line, col, curwant)
   local remove_cursor_index
   for index, cursor in ipairs(M.virtual_cursors) do
     if cursor.line == line and cursor.col == col then
       remove_cursor_index = index
+      break
     end
   end
 
@@ -111,35 +116,29 @@ function M.update_main_cursor()
   M.update_cursor(M.main_cursor)
 end
 
+local bit = require("bit")
 function M.delete_duplicate_cursors()
-  local function hash(line, col, curwant)
-    return string.format("%d,%d,%d", line, col, curwant)
-  end
-  local set = {}
-  local curpos = vim.fn.getcurpos()
-  set[hash(curpos[2], curpos[3], curpos[5])] = true
-  local dup_indexes = {}
-  for index, cursor in ipairs(M.virtual_cursors) do
+  local cur = vim.fn.getcurpos()
+  local set = { [hash(cur[2], cur[3], cur[5])] = true }
+  local new_cursors = {}
+  for _, cursor in ipairs(M.virtual_cursors) do
     local h = hash(cursor.line, cursor.col, cursor.curwant)
-    if set[h] then
-      dup_indexes[#dup_indexes + 1] = index
-    else
+    if not set[h] then
       set[h] = true
+      table.insert(new_cursors, cursor)
+    else
+      utils.add_log("delete duplicate cursor (%d, %d)", cursor.line, cursor.col)
+      vim.api.nvim_buf_del_extmark(0, M.ns_id, cursor.id)
     end
   end
-  for _, index in ipairs(dup_indexes) do
-    local cursor = M.virtual_cursors[index]
-    utils.add_log("delete duplicate cursor (%d, %d)", cursor.line, cursor.col)
-    vim.api.nvim_buf_del_extmark(0, M.ns_id, cursor.id)
-    M.virtual_cursors[index] = nil
-    -- table.remove(M.virtual_cursors, index) -- remove index may cause nil index
-  end
+  M.virtual_cursors = new_cursors
 end
 
 function M.toggle_cursor_upward()
   M.adding_cursor = true
   local pos = vim.fn.getcurpos()
   M.toggle_cursor(pos[2], pos[3], pos[5])
+  M.delete_duplicate_cursors()
   vim.cmd.normal("k")
   vim.schedule(function()
     M.adding_cursor = false
@@ -158,6 +157,7 @@ function M.toggle_cursor_downward()
   M.adding_cursor = true
   local pos = vim.fn.getcurpos()
   M.toggle_cursor(pos[2], pos[3], pos[5])
+  M.delete_duplicate_cursors()
   vim.cmd.normal("j")
   vim.schedule(function()
     M.adding_cursor = false
@@ -193,6 +193,7 @@ function M.toggle_cursor_next_match()
   end
   local pos = vim.fn.getcurpos()
   M.toggle_cursor(pos[2], pos[3], pos[5])
+  M.delete_duplicate_cursors()
   vim.cmd.normal(M.visual_star and "n" or "*")
   M.visual_star = M.visual_star or visual_star
   vim.cmd.nohlsearch()
@@ -229,6 +230,7 @@ function M.toggle_cursor_all_match()
       break
     end
   end
+  M.delete_duplicate_cursors()
   vim.o.hlsearch = hls
   vim.cmd.nohlsearch()
   vim.schedule(function()
@@ -295,6 +297,7 @@ function M.toggle_cursor_by_flash(pattern)
       vim.api.nvim_win_set_cursor(0, { pos[1], pos[2] })
     end
   end
+  M.delete_duplicate_cursors()
   -- disable <esc> because flash.nvim will input <esc> when it quit
   if #M.virtual_cursors > 0 then
     vim.keymap.del("n", "<Esc>", { buffer = 0 })
@@ -391,6 +394,7 @@ function M.add_cursors_in_visual(type)
     -- Do not input, just use this function to add cursors
     -- vim.api.nvim_input("i")
   end
+  M.delete_duplicate_cursors()
   vim.wo.virtualedit = orig_ve
 end
 

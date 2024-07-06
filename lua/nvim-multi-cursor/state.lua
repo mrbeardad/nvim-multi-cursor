@@ -50,7 +50,6 @@ function M.normal_change()
 
   if reg ~= "" and not cursor.adding_cursor then
     cursor.update_main_cursor()
-    cursor.delete_duplicate_cursors()
     for _, c in ipairs(cursor.virtual_cursors) do
       cursor.goto_cursor(c)
       if M.last_handle_mode == "i" then
@@ -66,6 +65,7 @@ function M.normal_change()
       cursor.update_cursor(c)
     end
     cursor.goto_main_cursor()
+    cursor.delete_duplicate_cursors()
   end
 
   utils.start_record()
@@ -83,7 +83,6 @@ function M.insert_change()
 
   if reg ~= "" and not cursor.adding_cursor then
     cursor.update_main_cursor()
-    cursor.delete_duplicate_cursors()
     for _, c in ipairs(cursor.virtual_cursors) do
       cursor.goto_cursor(c)
       if M.last_handle_mode == "n" then
@@ -101,6 +100,7 @@ function M.insert_change()
       cursor.update_cursor(c)
     end
     cursor.goto_main_cursor()
+    cursor.delete_duplicate_cursors()
   end
 
   utils.start_record()
