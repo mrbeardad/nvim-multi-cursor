@@ -67,6 +67,7 @@ function M.clear_cursors()
   for _, cursor in ipairs(M.virtual_cursors) do
     vim.api.nvim_buf_del_extmark(0, M.ns_id, cursor.id)
   end
+  M.visual_star = false
   M.virtual_cursors = {}
 end
 
@@ -171,11 +172,64 @@ function M.cursor_down()
   end)
 end
 
+M.visual_star = false
 function M.toggle_cursor_next_match()
+  local visual_star = false
   M.adding_cursor = true
+  if vim.fn.mode() == "n" then
+    if not M.visual_star then
+      vim.cmd("normal! lb")
+    end
+  else
+    visual_star = true
+    vim.api.nvim_feedkeys("\027", "nx", false)
+    local start_pos = vim.api.nvim_buf_get_mark(0, "<")
+    local cursor_pos = vim.api.nvim_win_get_cursor(0)
+    if start_pos[1] < cursor_pos[1] or start_pos[2] < cursor_pos[2] then
+      vim.cmd("normal! gvo")
+    else
+      vim.cmd("normal! gv")
+    end
+  end
   local pos = vim.fn.getcurpos()
   M.toggle_cursor(pos[2], pos[3], pos[5])
-  vim.cmd.normal("*")
+  vim.cmd.normal(M.visual_star and "n" or "*")
+  M.visual_star = M.visual_star or visual_star
+  vim.cmd.nohlsearch()
+  vim.schedule(function()
+    M.adding_cursor = false
+  end)
+end
+
+function M.toggle_cursor_all_match()
+  M.adding_cursor = true
+  if vim.fn.mode() == "n" then
+    vim.cmd("normal! lb")
+  else
+    vim.api.nvim_feedkeys("\027", "nx", false)
+    local start_pos = vim.api.nvim_buf_get_mark(0, "<")
+    local cursor_pos = vim.api.nvim_win_get_cursor(0)
+    if start_pos[1] < cursor_pos[1] or start_pos[2] < cursor_pos[2] then
+      vim.cmd("normal! gvo")
+    else
+      vim.cmd("normal! gv")
+    end
+  end
+  local hls = vim.o.hlsearch
+  vim.o.hlsearch = false
+  local pos = vim.fn.getcurpos()
+  local orig_pos = pos
+  local next_cmd = "*"
+  while true do
+    M.toggle_cursor(pos[2], pos[3], pos[5])
+    vim.cmd.normal(next_cmd)
+    next_cmd = "n"
+    pos = vim.fn.getcurpos()
+    if pos[2] == orig_pos[2] and pos[3] == orig_pos[3] then
+      break
+    end
+  end
+  vim.o.hlsearch = hls
   vim.cmd.nohlsearch()
   vim.schedule(function()
     M.adding_cursor = false

@@ -50,6 +50,7 @@ function M.normal_change()
 
   if reg ~= "" and not cursor.adding_cursor then
     cursor.update_main_cursor()
+    cursor.delete_duplicate_cursors()
     for _, c in ipairs(cursor.virtual_cursors) do
       cursor.goto_cursor(c)
       if M.last_handle_mode == "i" then
@@ -61,10 +62,10 @@ function M.normal_change()
           vim.cmd("normal! \27")
         end
       end
+      -- utils.add_log("[%d, %d]", c.line, c.col)
       cursor.update_cursor(c)
     end
     cursor.goto_main_cursor()
-    cursor.delete_duplicate_cursors()
   end
 
   utils.start_record()
@@ -82,6 +83,7 @@ function M.insert_change()
 
   if reg ~= "" and not cursor.adding_cursor then
     cursor.update_main_cursor()
+    cursor.delete_duplicate_cursors()
     for _, c in ipairs(cursor.virtual_cursors) do
       cursor.goto_cursor(c)
       if M.last_handle_mode == "n" then
@@ -95,10 +97,10 @@ function M.insert_change()
         vim.cmd("normal i" .. reg)
         vim.cmd.execute([["normal \<Right>"]])
       end
+      -- utils.add_log("[%d, %d]", c.line, c.col)
       cursor.update_cursor(c)
     end
     cursor.goto_main_cursor()
-    cursor.delete_duplicate_cursors()
   end
 
   utils.start_record()
@@ -113,12 +115,25 @@ function M.setup()
 
     -- Schedule it in order to iterate the virtual cursors after the real cursor has done
     vim.schedule(function()
-      -- Quit multi_cursor_mode or nothing is pending
-      if not M.multi_cursor_mode or vim.fn.state() ~= "" then
+      if not M.multi_cursor_mode then
         return
       end
 
       local mode = vim.fn.mode()
+      local state = vim.fn.state()
+      -- Break change mode into normal/insert mode
+      if mode == "i" and state == "o" then
+        vim.api.nvim_input("<Esc>")
+        vim.schedule(function()
+          vim.api.nvim_input("a")
+        end)
+        return
+      end
+      -- Quit when something is pending
+      if state ~= "" then
+        return
+      end
+
       if mode == "n" then
         M.normal_change()
         M.last_handle_mode = mode
