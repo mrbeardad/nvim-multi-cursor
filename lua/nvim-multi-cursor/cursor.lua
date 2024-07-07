@@ -138,8 +138,8 @@ function M.toggle_cursor_upward()
   M.adding_cursor = true
   local pos = vim.fn.getcurpos()
   M.toggle_cursor(pos[2], pos[3], pos[5])
-  M.delete_duplicate_cursors()
   vim.cmd.normal("k")
+  M.delete_duplicate_cursors()
   vim.schedule(function()
     M.adding_cursor = false
   end)
@@ -157,8 +157,8 @@ function M.toggle_cursor_downward()
   M.adding_cursor = true
   local pos = vim.fn.getcurpos()
   M.toggle_cursor(pos[2], pos[3], pos[5])
-  M.delete_duplicate_cursors()
   vim.cmd.normal("j")
+  M.delete_duplicate_cursors()
   vim.schedule(function()
     M.adding_cursor = false
   end)
@@ -193,8 +193,8 @@ function M.toggle_cursor_next_match()
   end
   local pos = vim.fn.getcurpos()
   M.toggle_cursor(pos[2], pos[3], pos[5])
-  M.delete_duplicate_cursors()
   vim.cmd.normal(M.visual_star and "n" or "*")
+  M.delete_duplicate_cursors()
   M.visual_star = M.visual_star or visual_star
   vim.cmd.nohlsearch()
   vim.schedule(function()
