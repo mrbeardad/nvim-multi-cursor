@@ -10,6 +10,11 @@ function M.setup(opts)
     vim.api.nvim_set_hl(0, "FlashLabelUnselected", { fg = "#b9bbc4", bg = "#bd0c69", italic = true, bold = true })
   end
 
+  local ok, vmc = pcall(require, "vscode-multi-cursor")
+  if ok then
+    config.vmc = vmc
+  end
+
   state.setup()
 end
 

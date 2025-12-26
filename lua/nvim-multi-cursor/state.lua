@@ -5,7 +5,6 @@ local utils = require("nvim-multi-cursor.utils")
 local M = {}
 
 M.multi_cursor_mode = false
-M.do_not_repeat = false
 M.iterating_virtual_cursors = false
 M.last_handle_mode = "n"
 
@@ -18,6 +17,7 @@ function M.start()
   config.config.start_hook()
   utils.cache_ve()
   utils.cache_register()
+  utils.clear_vmc_augroup()
   utils.start_record()
   M.multi_cursor_mode = true
   utils.add_log("start")
@@ -28,7 +28,10 @@ function M.stop()
     return
   end
   M.multi_cursor_mode = false
+  M.iterating_virtual_cursors = false
+  M.last_handle_mode = "n"
   utils.stop_record()
+  utils.restore_vmc_augroup()
   utils.resotre_register()
   utils.resotre_ve()
   config.config.stop_hook()
@@ -37,6 +40,7 @@ function M.stop()
   cursor.clear_cursors()
   utils.add_log("stop")
   utils.break_log()
+  -- vim.print(utils.last_log)
 end
 
 function M.normal_change()
@@ -82,6 +86,13 @@ function M.insert_change()
     utils.add_log("insert_change last_mode:%s mode:%s @m:%s", M.last_handle_mode, vim.fn.mode(), reg)
   end
 
+  local vmc = config.vmc
+  if vmc then
+    vim.go.operatorfunc = [[v:lua.require'vscode-multi-cursor'.create_cursor]]
+    config.config.orig_cursor_hl = config.config.cursor_hl
+    config.config.cursor_hl = "VSCodeNone"
+  end
+
   if reg ~= "" and not cursor.adding_cursor then
     cursor.update_main_cursor()
     for _, c in ipairs(cursor.virtual_cursors) do
@@ -97,11 +108,62 @@ function M.insert_change()
         vim.cmd("normal i" .. reg)
         vim.cmd.execute([["normal \<Right>"]])
       end
+      if vmc then
+        vim.cmd("normal g@l") -- add vscode-multi-cursor
+      end
       -- utils.add_log("[%d, %d]", c.line, c.col)
       cursor.update_cursor(c)
     end
     cursor.goto_main_cursor()
     cursor.delete_duplicate_cursors()
+    if vmc then
+      vim.cmd("normal g@l")
+    end
+  end
+
+  if vmc and M.last_handle_mode == "n" then
+    utils.add_log("go into vscode-multi-cursor")
+    vim.keymap.set({ "n" }, "mi", vmc.start_left, { desc = "Start cursors on the left", buffer = true })
+    vim.keymap.set({ "n" }, "mI", vmc.start_left_edge, { desc = "Start cursors on the left edge", buffer = true })
+    vim.keymap.set({ "n" }, "ma", vmc.start_left, { desc = "Start cursors on the right", buffer = true })
+    vim.keymap.set({ "n" }, "mA", vmc.start_left, { desc = "Start cursors on the right", buffer = true })
+
+    vim.api.nvim_create_autocmd({ "InsertEnter" }, {
+      once = true,
+      callback = vmc.cancel,
+    })
+    vim.api.nvim_create_autocmd({ "InsertLeave" }, {
+      once = true,
+      callback = function()
+        vim.api.nvim_create_autocmd({ "InsertLeave" }, {
+          once = true,
+          callback = function()
+            -- return from vscode-multi-cursor to nvim-multi-cursor
+            vim.keymap.del({ "n" }, "mi", { buffer = true })
+            vim.keymap.del({ "n" }, "mI", { buffer = true })
+            vim.keymap.del({ "n" }, "ma", { buffer = true })
+            vim.keymap.del({ "n" }, "mA", { buffer = true })
+            cursor.goto_main_cursor()
+            utils.start_record()
+            config.config.cursor_hl = config.config.orig_cursor_hl
+            -- redraw cursors, if you mapped following key, what can i say, man!
+            vim.api.nvim_input("<D-F7>")
+            M.last_handle_mode = "n"
+            M.iterating_virtual_cursors = false
+          end,
+        })
+      end,
+    })
+    -- fix on empty line
+    for _, curs in ipairs(require("vscode-multi-cursor.state").cursors) do
+      if curs.start_pos[1] ~= curs.end_pos[1] then
+        curs.start_pos = curs.end_pos
+        curs.range.start = curs.range["end"]
+      end
+    end
+    -- call start_left directly does not work, seems there's <esc> come from somewhere
+    vim.api.nvim_input("<Esc>m" .. reg)
+    return
   end
 
   utils.start_record()

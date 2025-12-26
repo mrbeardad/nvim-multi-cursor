@@ -4,8 +4,9 @@
 
 - Implement by using macro recording
 - Repeat your action at each virtual cursor, support all of your customized keymaps
-- Press `q` to quit multi-cursor-mode
-- TODO: currently only support normal mode, the actions in insert mode or visual mode will be synced
+- Press `q`/`<Esc>` to quit multi-cursor-mode
+- Work together with [vscode-multi-cursor.nvim](https://github.com/vscode-neovim/vscode-multi-cursor.nvim)
+- TODO: currently only support normal and insert mode, the actions in visual mode will be synced
   to virtual cursor when you return to normal mode.
 
 ## Installation

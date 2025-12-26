@@ -1,3 +1,4 @@
+local config = require("nvim-multi-cursor.config")
 local M = {}
 
 M.last_log = {}
@@ -54,6 +55,25 @@ end
 
 function M.resotre_ve()
   vim.wo.virtualedit = M.orig_ve
+end
+
+function M.clear_vmc_augroup()
+  pcall(vim.api.nvim_del_augroup_by_name, "vscode-multiple-cursors")
+end
+
+function M.restore_vmc_augroup()
+  if config.vmc then
+    local group = vim.api.nvim_create_augroup("vscode-multiple-cursors", { clear = true })
+    vim.api.nvim_create_autocmd({ "VimEnter", "ColorScheme" }, { group = group, callback = config.vmc.set_highlight })
+    vim.api.nvim_create_autocmd({ "WinEnter" }, {
+      group = group,
+      callback = require("vscode-multi-cursor.state").check_buffer,
+    })
+    vim.api.nvim_create_autocmd({ "InsertEnter", "TextChanged" }, {
+      group = group,
+      callback = config.vmc.cancel,
+    })
+  end
 end
 
 return M
