@@ -68,6 +68,7 @@ function M.normal_change()
     cursor.delete_duplicate_cursors()
   end
 
+  config.config.normal_changed_hook()
   utils.start_record()
   M.iterating_virtual_cursors = false
 end
