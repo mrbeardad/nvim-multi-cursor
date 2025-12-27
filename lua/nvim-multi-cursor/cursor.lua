@@ -1,5 +1,4 @@
 local config = require("nvim-multi-cursor.config")
--- local state = require("nvim-multi-cursor.state")
 local utils = require("nvim-multi-cursor.utils")
 
 local M = {}
@@ -12,7 +11,6 @@ local M = {}
 
 M.main_cursor = {} ---@type Cursor
 M.virtual_cursors = {} ---@type table[Cursor]
-M.adding_cursor = false
 M.ns_id = vim.api.nvim_create_namespace("MultipleCursors")
 
 function M.set_extmark(line, col, id, hl)
@@ -116,7 +114,6 @@ function M.update_main_cursor()
   M.update_cursor(M.main_cursor)
 end
 
-local bit = require("bit")
 function M.delete_duplicate_cursors()
   local cur = vim.fn.getcurpos()
   local set = { [hash(cur[2], cur[3], cur[5])] = true }
@@ -135,47 +132,39 @@ function M.delete_duplicate_cursors()
 end
 
 function M.toggle_cursor_upward()
-  M.adding_cursor = true
+  utils.adding_cursor_begin()
   local pos = vim.fn.getcurpos()
   M.toggle_cursor(pos[2], pos[3], pos[5])
   vim.cmd.normal("k")
   M.delete_duplicate_cursors()
-  vim.schedule(function()
-    M.adding_cursor = false
-  end)
+  utils.adding_cursor_end()
 end
 
 function M.cursor_up()
-  M.adding_cursor = true
+  utils.adding_cursor_begin()
   vim.cmd.normal("k")
-  vim.schedule(function()
-    M.adding_cursor = false
-  end)
+  utils.adding_cursor_end()
 end
 
 function M.toggle_cursor_downward()
-  M.adding_cursor = true
+  utils.adding_cursor_begin()
   local pos = vim.fn.getcurpos()
   M.toggle_cursor(pos[2], pos[3], pos[5])
   vim.cmd.normal("j")
   M.delete_duplicate_cursors()
-  vim.schedule(function()
-    M.adding_cursor = false
-  end)
+  utils.adding_cursor_end()
 end
 
 function M.cursor_down()
-  M.adding_cursor = true
+  utils.adding_cursor_begin()
   vim.cmd.normal("j")
-  vim.schedule(function()
-    M.adding_cursor = false
-  end)
+  utils.adding_cursor_end()
 end
 
 M.visual_star = false
 function M.toggle_cursor_next_match()
   local visual_star = false
-  M.adding_cursor = true
+  utils.adding_cursor_begin()
   if vim.fn.mode() == "n" then
     if not M.visual_star then
       vim.cmd("normal! lb")
@@ -197,13 +186,11 @@ function M.toggle_cursor_next_match()
   M.delete_duplicate_cursors()
   M.visual_star = M.visual_star or visual_star
   vim.cmd.nohlsearch()
-  vim.schedule(function()
-    M.adding_cursor = false
-  end)
+  utils.adding_cursor_end()
 end
 
 function M.toggle_cursor_all_match()
-  M.adding_cursor = true
+  utils.adding_cursor_begin()
   if vim.fn.mode() == "n" then
     vim.cmd("normal! lb")
   else
@@ -233,22 +220,18 @@ function M.toggle_cursor_all_match()
   M.delete_duplicate_cursors()
   vim.o.hlsearch = hls
   vim.cmd.nohlsearch()
-  vim.schedule(function()
-    M.adding_cursor = false
-  end)
+  utils.adding_cursor_end()
 end
 
 function M.cursor_next_match()
-  M.adding_cursor = true
+  utils.adding_cursor_begin()
   vim.cmd.normal("*")
   vim.cmd.nohlsearch()
-  vim.schedule(function()
-    M.adding_cursor = false
-  end)
+  utils.adding_cursor_end()
 end
 
 function M.toggle_cursor_by_flash(pattern)
-  M.adding_cursor = true
+  utils.adding_cursor_begin()
   local selected_labels = {}
 
   local function find_label(match)
@@ -304,7 +287,7 @@ function M.toggle_cursor_by_flash(pattern)
   end
   vim.schedule(function()
     vim.schedule(function()
-      M.adding_cursor = false
+      utils.adding_cursor_end()
       vim.keymap.set("n", "<Esc>", "<Cmd>lua require('nvim-multi-cursor.state').stop()<CR>", { buffer = 0 })
     end)
   end)

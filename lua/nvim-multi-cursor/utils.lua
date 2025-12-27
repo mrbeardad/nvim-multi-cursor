@@ -1,4 +1,3 @@
-local config = require("nvim-multi-cursor.config")
 local M = {}
 
 M.last_log = {}
@@ -29,7 +28,6 @@ end
 
 function M.start_record()
   if vim.fn.reg_recording() ~= "" then
-    M.add_log("start record but already exist")
     vim.cmd("normal! q")
   end
 
@@ -38,12 +36,23 @@ end
 
 function M.stop_record()
   if vim.fn.reg_recording() == "" then
-    M.add_log("stop record but not exist")
     return ""
   end
 
   vim.cmd("normal! q")
   return vim.fn.getreg("m")
+end
+
+function M.adding_cursor_begin()
+  M.stop_record()
+  require("nvim-multi-cursor.state").adding_cursor = true
+end
+
+function M.adding_cursor_end()
+  vim.schedule(function()
+    M.start_record()
+    require("nvim-multi-cursor.state").adding_cursor = false
+  end)
 end
 
 M.orig_ve = ""
@@ -55,25 +64,6 @@ end
 
 function M.resotre_ve()
   vim.wo.virtualedit = M.orig_ve
-end
-
-function M.clear_vmc_augroup()
-  pcall(vim.api.nvim_del_augroup_by_name, "vscode-multiple-cursors")
-end
-
-function M.restore_vmc_augroup()
-  if config.vmc then
-    local group = vim.api.nvim_create_augroup("vscode-multiple-cursors", { clear = true })
-    vim.api.nvim_create_autocmd({ "VimEnter", "ColorScheme" }, { group = group, callback = config.vmc.set_highlight })
-    vim.api.nvim_create_autocmd({ "WinEnter" }, {
-      group = group,
-      callback = require("vscode-multi-cursor.state").check_buffer,
-    })
-    vim.api.nvim_create_autocmd({ "InsertEnter", "TextChanged" }, {
-      group = group,
-      callback = config.vmc.cancel,
-    })
-  end
 end
 
 return M

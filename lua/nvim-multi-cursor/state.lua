@@ -5,6 +5,7 @@ local utils = require("nvim-multi-cursor.utils")
 local M = {}
 
 M.multi_cursor_mode = false
+M.adding_cursor = false
 M.iterating_virtual_cursors = false
 M.last_handle_mode = "n"
 
@@ -17,7 +18,6 @@ function M.start()
   config.config.start_hook()
   utils.cache_ve()
   utils.cache_register()
-  utils.clear_vmc_augroup()
   utils.start_record()
   M.multi_cursor_mode = true
   utils.add_log("start")
@@ -28,16 +28,16 @@ function M.stop()
     return
   end
   M.multi_cursor_mode = false
+  M.adding_cursor = false
   M.iterating_virtual_cursors = false
   M.last_handle_mode = "n"
+  cursor.clear_cursors()
   utils.stop_record()
-  utils.restore_vmc_augroup()
   utils.resotre_register()
   utils.resotre_ve()
   config.config.stop_hook()
   vim.keymap.del("n", "q", { buffer = 0 })
   vim.keymap.del("n", "<Esc>", { buffer = 0 })
-  cursor.clear_cursors()
   utils.add_log("stop")
   utils.break_log()
   -- vim.print(utils.last_log)
@@ -46,13 +46,9 @@ end
 function M.normal_change()
   M.iterating_virtual_cursors = true
   local reg = utils.stop_record()
-  if cursor.adding_cursor then
-    utils.add_log("normal_change last_mode:%s @m:%s(discarded)", M.last_handle_mode, reg)
-  else
-    utils.add_log("normal_change last_mode:%s @m:%s", M.last_handle_mode, reg)
-  end
+  utils.add_log("normal_change last_mode:%s @m:%s", M.last_handle_mode, reg)
 
-  if reg ~= "" and not cursor.adding_cursor then
+  if reg ~= "" then
     cursor.update_main_cursor()
     for _, c in ipairs(cursor.virtual_cursors) do
       cursor.goto_cursor(c)
@@ -72,7 +68,6 @@ function M.normal_change()
     cursor.delete_duplicate_cursors()
   end
 
-  config.config.normal_changed_hook()
   utils.start_record()
   M.iterating_virtual_cursors = false
 end
@@ -80,73 +75,68 @@ end
 function M.insert_change()
   M.iterating_virtual_cursors = true
   local reg = utils.stop_record()
-  if cursor.adding_cursor then
-    utils.add_log("insert_change last_mode:%s mode:%s @m:%s(discarded)", M.last_handle_mode, vim.fn.mode(), reg)
-  else
-    utils.add_log("insert_change last_mode:%s mode:%s @m:%s", M.last_handle_mode, vim.fn.mode(), reg)
-  end
+  utils.add_log("insert_change last_mode:%s @m:%s", M.last_handle_mode, reg)
 
-  local vmc = config.vmc
-  if vmc then
-    vim.go.operatorfunc = [[v:lua.require'vscode-multi-cursor'.create_cursor]]
+  if vim.g.vscode then
+    -- hide virtual cursors
     config.config.orig_cursor_hl = config.config.cursor_hl
     config.config.cursor_hl = "VSCodeNone"
   end
 
-  if reg ~= "" and not cursor.adding_cursor then
+  if reg ~= "" then
     cursor.update_main_cursor()
     for _, c in ipairs(cursor.virtual_cursors) do
       cursor.goto_cursor(c)
       if M.last_handle_mode == "n" then
-        local eol = #vim.fn.getline(".")
-        if reg == "A" or c.col == eol and reg == "a" then
-          vim.fn.cursor(c.line, eol + 1, eol + 1)
-        else
-          vim.cmd.execute([["normal! \<Esc>\<Right>Q"]]) -- unexpected behavior when at EOL
-        end
+        -- When use :normal to do command, it will add <esc> if the command is not complete, such as stay in insert mode.
+        -- However, the <esc> moves cursor left if the cursor is not at the first column.
+        -- Thus, append a <c-o> after Q, since <c-o> stops insert mode and keeps cursor position not moved
+        vim.cmd.execute([["normal! Q\<C-o>"]])
       else
-        vim.cmd("normal i" .. reg)
-        vim.cmd.execute([["normal \<Right>"]])
+        vim.cmd.execute([["normal i]] .. reg .. [[\<C-o>"]])
       end
-      if vmc then
-        vim.cmd("normal g@l") -- add vscode-multi-cursor
-      end
-      -- utils.add_log("[%d, %d]", c.line, c.col)
       cursor.update_cursor(c)
+      -- utils.add_log("[%d, %d]", c.line, c.col)
+      if vim.g.vscode then
+        c.lsp_pos = vim.lsp.util.make_position_params(0, "utf-16").position
+      end
     end
     cursor.goto_main_cursor()
     cursor.delete_duplicate_cursors()
-    if vmc then
-      vim.cmd("normal g@l")
-    end
   end
 
-  if vmc and M.last_handle_mode == "n" then
+  if vim.g.vscode then
     utils.add_log("go into vscode-multi-cursor")
-    vim.keymap.set({ "n" }, "mi", vmc.start_left, { desc = "Start cursors on the left", buffer = true })
-    vim.keymap.set({ "n" }, "mI", vmc.start_left_edge, { desc = "Start cursors on the left edge", buffer = true })
-    vim.keymap.set({ "n" }, "ma", vmc.start_left, { desc = "Start cursors on the right", buffer = true })
-    vim.keymap.set({ "n" }, "mA", vmc.start_left, { desc = "Start cursors on the right", buffer = true })
+    local vscode = require("vscode")
 
-    vim.api.nvim_create_autocmd({ "InsertEnter" }, {
-      once = true,
-      callback = vmc.cancel,
-    })
+    -- force vscode cursor into insert mode
+    vim.api.nvim_input("<C-o>i")
+    vscode.with_insert(function()
+      for _, curs in ipairs(cursor.virtual_cursors) do
+        vscode.action("createCursor", {
+          args = {
+            position = {
+              lineNumber = curs.line,
+              column = curs.lsp_pos.character + 1,
+            },
+          },
+        })
+      end
+    end)
+
     vim.api.nvim_create_autocmd({ "InsertLeave" }, {
       once = true,
       callback = function()
         vim.api.nvim_create_autocmd({ "InsertLeave" }, {
           once = true,
           callback = function()
-            -- return from vscode-multi-cursor to nvim-multi-cursor
-            vim.keymap.del({ "n" }, "mi", { buffer = true })
-            vim.keymap.del({ "n" }, "mI", { buffer = true })
-            vim.keymap.del({ "n" }, "ma", { buffer = true })
-            vim.keymap.del({ "n" }, "mA", { buffer = true })
+            utils.add_log("go back to nvim-multi-cursor")
+            vscode.call("removeSecondaryCursors")
+            -- TODO: Sync the cursor positions from vscode after edit
             cursor.goto_main_cursor()
             utils.start_record()
             config.config.cursor_hl = config.config.orig_cursor_hl
-            -- redraw cursors, if you mapped following key, what can i say, man!
+            -- redraw virtual cursors, if you mapped following key, what can i say, man!
             vim.api.nvim_input("<D-F7>")
             M.last_handle_mode = "n"
             M.iterating_virtual_cursors = false
@@ -154,15 +144,6 @@ function M.insert_change()
         })
       end,
     })
-    -- fix on empty line
-    for _, curs in ipairs(require("vscode-multi-cursor.state").cursors) do
-      if curs.start_pos[1] ~= curs.end_pos[1] then
-        curs.start_pos = curs.end_pos
-        curs.range.start = curs.range["end"]
-      end
-    end
-    -- call start_left directly does not work, seems there's <esc> come from somewhere
-    vim.api.nvim_input("<Esc>m" .. reg)
     return
   end
 
@@ -172,31 +153,29 @@ end
 
 function M.setup()
   vim.on_key(function(key)
-    if not M.multi_cursor_mode or M.iterating_virtual_cursors then
+    if not M.multi_cursor_mode or M.iterating_virtual_cursors or M.adding_cursor then
       return
     end
 
     -- Schedule it in order to iterate the virtual cursors after the real cursor has done
     vim.schedule(function()
-      if not M.multi_cursor_mode then
+      if not M.multi_cursor_mode or M.iterating_virtual_cursors or M.adding_cursor then
         return
       end
 
       local mode = vim.fn.mode()
       local state = vim.fn.state()
-      -- Break change mode into normal/insert mode
+      -- Change mode keeps (mode == "i" and state == "o") until exit insert mode, so let's break it
       if mode == "i" and state == "o" then
-        vim.api.nvim_input("<Esc>")
-        vim.schedule(function()
-          vim.api.nvim_input("a")
-        end)
+        vim.api.nvim_input("<C-o>i")
         return
       end
-      -- Quit when something is pending
+      -- Quit when operation is pending, waiting for further key input
       if state ~= "" then
         return
       end
 
+      -- It is time to replay the marco operations
       if mode == "n" then
         M.normal_change()
         M.last_handle_mode = mode
