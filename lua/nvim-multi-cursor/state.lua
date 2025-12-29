@@ -7,6 +7,8 @@ local M = {}
 M.multi_cursor_mode = false
 M.adding_cursor = false
 M.iterating_virtual_cursors = false
+M.completed_item_word = nil
+M.current_cursor_id = 0
 M.last_handle_mode = "n"
 
 function M.start()
@@ -30,11 +32,13 @@ function M.stop()
   M.multi_cursor_mode = false
   M.adding_cursor = false
   M.iterating_virtual_cursors = false
+  M.completed_item_word = nil
   M.last_handle_mode = "n"
   cursor.clear_cursors()
   utils.stop_record()
   utils.resotre_register()
   utils.resotre_ve()
+  utils.clear_reg_queues()
   config.config.stop_hook()
   vim.keymap.del("n", "q", { buffer = 0 })
   vim.keymap.del("n", "<Esc>", { buffer = 0 })
@@ -52,6 +56,7 @@ function M.normal_change()
     cursor.update_main_cursor()
     for _, c in ipairs(cursor.virtual_cursors) do
       cursor.goto_cursor(c)
+      M.current_cursor_id = c.id
       if M.last_handle_mode == "i" then
         vim.cmd("normal i" .. reg)
       else
@@ -66,6 +71,7 @@ function M.normal_change()
     end
     cursor.goto_main_cursor()
     cursor.delete_duplicate_cursors()
+    M.current_cursor_id = 0
   end
 
   utils.start_record()
@@ -75,7 +81,8 @@ end
 function M.insert_change()
   M.iterating_virtual_cursors = true
   local reg = utils.stop_record()
-  utils.add_log("insert_change last_mode:%s @m:%s", M.last_handle_mode, reg)
+  local cmp = M.completed_item_word and M.completed_item_word:sub(2) or ""
+  utils.add_log("insert_change last_mode:%s @m:%s cmp:%s", M.last_handle_mode, reg, cmp)
 
   if vim.g.vscode then
     -- hide virtual cursors
@@ -87,11 +94,21 @@ function M.insert_change()
     cursor.update_main_cursor()
     for _, c in ipairs(cursor.virtual_cursors) do
       cursor.goto_cursor(c)
+      M.current_cursor_id = c.id
       if M.last_handle_mode == "n" then
-        -- When use :normal to do command, it will add <esc> if the command is not complete, such as stay in insert mode.
-        -- However, the <esc> moves cursor left if the cursor is not at the first column.
-        -- Thus, append a <c-o> after Q, since <c-o> stops insert mode and keeps cursor position not moved
-        vim.cmd.execute([["normal! Q\<C-o>"]])
+        if reg == "o" then
+          -- There's a bug for o
+          vim.cmd.execute([["normal! \<End>a\<CR>\<C-o>"]])
+        else
+          -- When use :normal to do command, it will add <esc> if the command is not complete, such as stay in insert mode.
+          -- However, the <esc> moves cursor left if the cursor is not at the first column.
+          -- Thus, append a <c-o> after Q, since <c-o> stops insert mode and keeps cursor position not moved
+          vim.cmd.execute([["normal! Q\<C-o>"]])
+        end
+      elseif cmp ~= "" then
+        local cword = utils.is_keyword_char_left_of_cursor() and [[\<C-w>]] or ""
+        vim.cmd.execute([["normal i]] .. cword .. cmp .. [[\<C-o>"]])
+        M.completed_item_word = nil
       else
         vim.cmd.execute([["normal i]] .. reg .. [[\<C-o>"]])
       end
@@ -103,6 +120,7 @@ function M.insert_change()
     end
     cursor.goto_main_cursor()
     cursor.delete_duplicate_cursors()
+    M.current_cursor_id = 0
   end
 
   if vim.g.vscode then
@@ -185,6 +203,26 @@ function M.setup()
       end
     end)
   end, cursor.ns_id)
+
+  vim.api.nvim_create_autocmd("TextYankPost", {
+    group = vim.api.nvim_create_augroup("NvimMultiCursorYank", {}),
+    callback = function()
+      if not M.multi_cursor_mode then
+        return
+      end
+      utils.on_yank_post()
+    end,
+  })
+
+  vim.api.nvim_create_autocmd("CompleteDonePre", {
+    group = vim.api.nvim_create_augroup("NvimMultiCursorCompleteDone", {}),
+    callback = function()
+      if not M.multi_cursor_mode then
+        return
+      end
+      M.completed_item_word = vim.v.completed_item.word
+    end,
+  })
 end
 
 return M
